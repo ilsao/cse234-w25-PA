@@ -49,7 +49,17 @@ def get_info(
     part_out_dim : int
         The partitioned output dimension for the FC layer.
     """
-    #TODO: Your code here
+    assert mp_size * dp_size == comm.Get_size()
+    mp_idx = rank % mp_size
+    dp_idx = rank // mp_size
+    mp_comm = comm.Split(color=dp_idx, key=mp_idx)
+    dp_comm = comm.Split(color=mp_idx, key=dp_idx)
+    if fc_layer == "fc_o":
+        part_in_dim = in_dim // mp_size
+        part_out_dim = out_dim 
+    else:
+        part_in_dim = in_dim
+        part_out_dim = out_dim // mp_size
     return mp_idx, dp_idx, mp_comm, dp_comm, part_in_dim, part_out_dim
 
 def naive_collect_forward_input(
@@ -65,7 +75,10 @@ def naive_collect_forward_input(
     After gathering, the full input should have shape:
       (batch_size, seq_length, part_in_dim * mp_size)
     """
-    #TODO: Your code here
+    x = np.ascontiguousarray(x)
+    tmp = np.empty((mp_size, *x.shape), dtype=x.dtype)
+    mp_comm.Allgather(x, tmp)
+    collected_x = np.concatenate(tmp, axis=-1)
     return collected_x
 
 
@@ -82,7 +95,10 @@ def naive_collect_forward_output(
     After gathering, the full output should have shape:
       (batch_size, seq_length, part_out_dim * mp_size)
     """
-    #TODO: Your code here
+    out = np.ascontiguousarray(out)
+    tmp = np.empty((mp_size, *out.shape), dtype=out.dtype)
+    mp_comm.Allgather(out, tmp)
+    collected_out = np.concatenate(tmp, axis=-1)
     return collected_out
 
 def naive_collect_backward_output(
@@ -115,7 +131,11 @@ def naive_collect_backward_output(
         The local output gradient for this MP node with shape 
         (batch_size, seq_length, out_dim // mp_size).
     """
-    #TODO: Your code here
+    block_size = output_grad.shape[-1] // mp_size
+    start = mp_group_idx * block_size
+    end = start + block_size
+    collected_output_grad = output_grad[:, :, start : end]
+    return collected_output_grad
 
 
 def naive_collect_backward_x(
@@ -150,4 +170,12 @@ def naive_collect_backward_x(
         The reduced and scattered grad_x with shape 
         (batch_size, seq_length, in_dim // mp_size).
     """
-    #TODO: Your code here
+    block_size = grad_x.shape[-1] // mp_size
+    recvcount = grad_x.size // mp_size
+
+    chunk = np.split(grad_x, mp_size, axis=-1)
+    send_buf = np.ascontiguousarray(np.stack(chunk, axis=0))
+
+    collected_grad_x = np.empty(grad_x.shape[:-1] + (block_size, ), dtype=grad_x.dtype)
+    mp_comm.Reduce_scatter(send_buf, collected_grad_x, [recvcount] * mp_size, op=MPI.SUM)
+    return collected_grad_x

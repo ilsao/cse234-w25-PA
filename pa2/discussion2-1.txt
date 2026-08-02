@@ -1,1 +1,4 @@
 Put discussion here for 2.1
+`myAllreduce` is slower because it performs a linear reduction in which rank 0 receives and reduces (N-1) full arrays sequentially, making rank 0 a communication bottleneck. 
+MPI's optimized `Allreduce` may use tree-based, recursive-doubling, or ring algorithms depending on the message size and process count, allowing communication to proceed more concurrently. 
+Therefore, the time difference comes mainly from serialization and implementation optimizations. 

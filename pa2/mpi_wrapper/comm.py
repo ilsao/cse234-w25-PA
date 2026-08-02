@@ -73,8 +73,25 @@ class Communicator(object):
           - For non-root processes: one send and one receive.
           - For the root process: (n-1) receives and (n-1) sends.
         """
-        #TODO: Your code here
+        assert src_array.size == dest_array.size
 
+        # reduce to root
+        rank = self.Get_rank()
+        nproc = self.Get_size()
+        if rank == 0:
+            recv = np.empty(src_array.size, dtype=src_array.dtype)
+            reduced = src_array
+            for i in range(1, nproc):
+                self.comm.Recv(recv, source=i)
+                op.Reduce_local(recv, reduced)
+        else:
+            reduced = np.empty(src_array.size, dtype=src_array.dtype)
+            self.comm.Send(src_array, dest=0)
+        
+        # braodcast
+        self.comm.Bcast(reduced, root=0)
+        np.copyto(dest_array, reduced)
+    
     def myAlltoall(self, src_array, dest_array):
         """
         A manual implementation of all-to-all where each process sends a
@@ -90,4 +107,18 @@ class Communicator(object):
             
         The total data transferred is updated for each pairwise exchange.
         """
-        #TODO: Your code here
+        nproc = self.Get_size()
+        rank = self.Get_rank()
+        
+        assert src_array.size % nproc == 0 and dest_array.size % nproc == 0
+        assert src_array.size == dest_array.size
+
+        block_size = src_array.size // nproc
+        for i in range(0, nproc):
+            start = i * block_size
+            end = (i + 1) * block_size
+            if i == rank:
+                dest_array[start : end] = src_array[start : end]        
+            else:
+                self.comm.Sendrecv(src_array[start : end], 
+                                   dest=i, recvbuf=dest_array[start : end], source=i)

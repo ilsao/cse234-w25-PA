@@ -9,7 +9,7 @@ parser.add_argument(
     type=str,
     help="MPI names for different toy examples",
     default="",
-    choices=["allreduce", "allgather", "reduce_scatter", "split", 'alltoall', 'myallreduce', 'myalltoall'],
+    choices=["allreduce", "allgather", "reduce_scatter", "split", 'alltoall', 'myallreduce', 'myalltoall', 'mytest'],
 )
 
 if __name__ == "__main__":
@@ -96,6 +96,16 @@ if __name__ == "__main__":
                 print("Some runs produced incorrect results!")
             print("Average MPI.Allreduce time: {:.6f} seconds".format(avg_allreduce))
             print("Average myAllreduce time:   {:.6f} seconds".format(avg_myallreduce))
+    
+    elif args.test_case == "mytest":
+        rank = comm.Get_rank() 
+        world_size = comm.Get_size()
+        src = np.array([rank + 1, rank + 2, rank + 3], dtype=np.int32)
+        dest = np.empty_like(src)
+        print(src)
+        comm.myAllreduce(src, dest, op=MPI.SUM)
+        comm.Barrier()
+        print(dest)
     
     elif args.test_case == "allgather":
         """
